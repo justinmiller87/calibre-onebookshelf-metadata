@@ -29,58 +29,30 @@ class ConfigWidget(QWidget):
         self.plugin = plugin
         layout = QVBoxLayout(self)
         
-        self.site_label = QLabel('Preferred Site:', self)
-        layout.addWidget(self.site_label)
+        # Cookie Input
+        self.cookie_label = QLabel('Storytellers Vault "cf_clearance" Cookie:', self)
+        layout.addWidget(self.cookie_label)
         
-        self.site_combo = QComboBox(self)
-        self.site_combo.addItems(sorted(list(plugin.BASE_URLS.keys())))
-        
-        # Set current preference
-        current = plugin.prefs.get('site_preference', 'DMsGuild')
-        idx = self.site_combo.findText(current)
-        if idx != -1:
-            self.site_combo.setCurrentIndex(idx)
-        else:
-            self.site_combo.setCurrentIndex(0)
-            
-        layout.addWidget(self.site_combo)
-        
-        # Cookie Input DMsGuild
-        self.cookie_label_dmg = QLabel('DMsGuild "cf_clearance" Cookie:', self)
-        layout.addWidget(self.cookie_label_dmg)
-        
-        self.cookie_input_dmg = QLineEdit(self)
-        self.cookie_input_dmg.setText(plugin.prefs.get('cf_cookie_dmg', ''))
-        self.cookie_input_dmg.setPlaceholderText('Paste DMsGuild cookie here')
-        layout.addWidget(self.cookie_input_dmg)
-
-        # Cookie Input DriveThruRPG
-        self.cookie_label_dtrpg = QLabel('DriveThruRPG "cf_clearance" Cookie:', self)
-        layout.addWidget(self.cookie_label_dtrpg)
-        
-        self.cookie_input_dtrpg = QLineEdit(self)
-        self.cookie_input_dtrpg.setText(plugin.prefs.get('cf_cookie_dtrpg', ''))
-        self.cookie_input_dtrpg.setPlaceholderText('Paste DriveThruRPG cookie here')
-        layout.addWidget(self.cookie_input_dtrpg)
+        self.cookie_input = QLineEdit(self)
+        self.cookie_input.setText(plugin.prefs.get('cf_cookie_stv', ''))
+        self.cookie_input.setPlaceholderText('Paste Storytellers Vault cookie here')
+        layout.addWidget(self.cookie_input)
 
         layout.addStretch(1)
 
     def save_settings(self):
-        val = str(self.site_combo.currentText())
-        self.plugin.prefs['site_preference'] = val
-        self.plugin.prefs['cf_cookie_dmg'] = self.cookie_input_dmg.text().strip()
-        self.plugin.prefs['cf_cookie_dtrpg'] = self.cookie_input_dtrpg.text().strip()
+        self.plugin.prefs['cf_cookie_stv'] = self.cookie_input.text().strip()
 
-class OneBookShelfSource(Source):
-    name = 'OneBookShelf Metadata'
-    description = 'Downloads metadata and covers from DriveThruRPG, DMsGuild, and sister sites.'
+class StorytellersVaultSource(Source):
+    name = 'Storytellers Vault Metadata'
+    description = 'Downloads metadata and covers from Storytellers Vault.'
     author = 'Justin Miller'
-    version = (1, 0, 3) # Support incremental updates
+    version = (1, 0, 0)
     minimum_calibre_version = (5, 0, 0)
 
     # Capabilities
     capabilities = frozenset(['identify', 'cover'])
-    touched_fields = frozenset(['title', 'authors', 'tags', 'pubdate', 'comments', 'publisher', 'identifier:dmsguild', 'identifier:drivethrurpg', 'series', 'rating'])
+    touched_fields = frozenset(['title', 'authors', 'tags', 'pubdate', 'comments', 'publisher', 'identifier:storytellersvault', 'series', 'rating'])
     
     # Explicitly enable customization
     def is_customizable(self):
@@ -92,19 +64,8 @@ class OneBookShelfSource(Source):
     def save_settings(self, config_widget):
         config_widget.save_settings()
 
-    BASE_URLS = {
-        'DMsGuild': 'https://www.dmsguild.com',
-        'DriveThruRPG': 'https://www.drivethrurpg.com',
-        'Storytellers Vault': 'https://www.storytellersvault.com',
-        'Pathfinder Infinite': 'https://www.pathfinderinfinite.com',
-        'DriveThruComics': 'https://www.drivethrucomics.com',
-        'DriveThruFiction': 'https://www.drivethrufiction.com',
-        'Wargame Vault': 'https://www.wargamevault.com'
-    }
-
     def get_base_url(self):
-        pref = self.prefs.get('site_preference', 'DMsGuild')
-        return self.BASE_URLS.get(pref, 'https://www.dmsguild.com')
+        return 'https://www.storytellersvault.com'
 
     def _fetch_url(self, url, timeout=30):
         # Try standard browser first
@@ -118,11 +79,7 @@ class OneBookShelfSource(Source):
         ]
         
         # Select cookie
-        cookie = None
-        if 'dmsguild' in url:
-            cookie = self.prefs.get('cf_cookie_dmg')
-        elif 'drivethrurpg' in url:
-            cookie = self.prefs.get('cf_cookie_dtrpg')
+        cookie = self.prefs.get('cf_cookie_stv')
             
         if cookie:
              br.addheaders.append(('Cookie', f'cf_clearance={cookie}'))
@@ -157,11 +114,7 @@ class OneBookShelfSource(Source):
         ]
         
         # Select cookie based on URL
-        cookie = None
-        if 'dmsguild' in url:
-            cookie = self.prefs.get('cf_cookie_dmg')
-        elif 'drivethrurpg' in url:
-            cookie = self.prefs.get('cf_cookie_dtrpg')
+        cookie = self.prefs.get('cf_cookie_stv')
 
         if cookie:
             cmd.extend(['-H', f'Cookie: cf_clearance={cookie}'])
@@ -170,8 +123,6 @@ class OneBookShelfSource(Source):
         cmd.append(url)
 
         try:
-            # DEBUG: Log the command (masking cookie for security if needed, but useful for now)
-            # log.info(f"Curl cmd: {' '.join(cmd)}") 
             return subprocess.check_output(cmd)
         except Exception as e:
             # Log specific curl error 
@@ -179,11 +130,9 @@ class OneBookShelfSource(Source):
 
     def identify(self, log, result_queue, abort, title=None, authors=None, identifiers={}, timeout=30):
         # 1. Check for specific identifiers
-        dmsguild_id = identifiers.get('dmsguild', None)
-        drivethrurpg_id = identifiers.get('drivethrurpg', None)
+        plugin_id = identifiers.get('storytellersvault', None)
         
-        product_id = dmsguild_id or drivethrurpg_id
-
+        product_id = plugin_id
         # 2. Search if no ID
         if not product_id:
             query = self._create_query(title, authors)
@@ -240,19 +189,20 @@ class OneBookShelfSource(Source):
 
     def _api_search(self, query, timeout, log):
         import json
-        # api.dmsguild.com/api/vBeta/search_ahead?keyword=...
-        base = "https://api.dmsguild.com/api/vBeta/search_ahead"
+        # api.storytellersvault.com/api/vBeta/search_ahead?keyword=...
+        base = "https://api.storytellersvault.com/api/vBeta/search_ahead"
+        
+        # Site ID: 77, Group ID: 30
+        site_id = 77
+        group_id = 30
+        
         # Using the params captured from user
-        url = f"{base}?groupId=29&keyword={quote(query)}&siteId=76"
+        url = f"{base}?groupId={group_id}&keyword={quote(query)}&siteId={site_id}"
+        
+        log.info(f"Searching: {url}")
         
         raw_json = self._fetch_via_curl(url, timeout)
         
-        # Debug Log
-        try:
-             log.info(f"API Response ({len(raw_json)} bytes): {raw_json[:200]}...")
-        except:
-             pass
-
         data = json.loads(raw_json)
         
         results = []
@@ -272,7 +222,7 @@ class OneBookShelfSource(Source):
         import json
         from calibre.ebooks.metadata.book.base import Metadata
         
-        url = f"https://api.dmsguild.com/api/vBeta/products/{product_id}"
+        url = f"https://api.storytellersvault.com/api/vBeta/products/{product_id}"
         log.info(f"Fetching details from: {url}")
         
         raw_json = self._fetch_via_curl(url, timeout)
@@ -292,7 +242,7 @@ class OneBookShelfSource(Source):
             authors = ['Unknown']
             
         mi = Metadata(title, authors)
-        mi.set_identifier('dmsguild', str(product_id))
+        mi.set_identifier('storytellersvault', str(product_id))
         mi.source = self.name
         
         # Description
@@ -324,10 +274,7 @@ class OneBookShelfSource(Source):
         img_path = attrs.get('image')
         if img_path:
             # Construct full URL
-            # DMsGuild images usually at https://www.dmsguild.com/images/{path}
-            # Or https://d1vzi28wh99zvq.cloudfront.net/images/{path} (CDN)
-            # Let's try the direct site URL first
-            cover_url = f"https://www.dmsguild.com/images/{img_path}"
+            cover_url = f"https://www.storytellersvault.com/images/{img_path}"
             self.cache_cover_url(cover_url, str(product_id))
 
         result_queue.put(mi)
@@ -367,11 +314,9 @@ class OneBookShelfSource(Source):
 
     def get_cached_cover_url(self, identifiers):
         # Check our temp cache
-        dmsguild_id = identifiers.get('dmsguild')
-        drivethrurpg_id = identifiers.get('drivethrurpg')
-        mid = dmsguild_id or drivethrurpg_id
-        if mid:
-            return getattr(self, '_cached_cover', {}).get(mid)
+        plugin_id = identifiers.get('storytellersvault')
+        if plugin_id:
+            return getattr(self, '_cached_cover', {}).get(plugin_id)
         return None
 
     def cache_cover_url(self, url, product_id):
@@ -379,42 +324,27 @@ class OneBookShelfSource(Source):
             self._cached_cover = {}
         self._cached_cover[product_id] = url
 
-
-
 if __name__ == '__main__':
     # Local testing block
     from calibre.ebooks.metadata.sources.test import (test_identify_plugin,
             title_test, authors_test, series_test)
     
-    # Mock prefs
-    OneBookShelfSource.prefs = {'site_preference': 'DMsGuild'}
-    
     # Try reading cookie files
     import os
-    if os.path.exists('cookie_dmg.txt'):
-        with open('cookie_dmg.txt', 'r') as f:
+    if os.path.exists('../cookie_stv.txt'):
+        with open('../cookie_stv.txt', 'r') as f:
             cookie = f.read().strip()
-            print(f"Using DMG cookie from file: {cookie[:10]}...")
-            OneBookShelfSource.prefs['cf_cookie_dmg'] = cookie
+            print(f"Using STV cookie from file: {cookie[:10]}...")
+            StorytellersVaultSource.prefs['cf_cookie_stv'] = cookie
             
-    if os.path.exists('cookie_dtrpg.txt'):
-        with open('cookie_dtrpg.txt', 'r') as f:
-            cookie = f.read().strip()
-            print(f"Using DTRPG cookie from file: {cookie[:10]}...")
-            OneBookShelfSource.prefs['cf_cookie_dtrpg'] = cookie
-
-    print("Running tests... (This may take a moment)")
+    print("Running Storytellers Vault tests...")
     tests = [
         (
             {'identifiers': {},
-             'title': 'Zombie Wizards Of Greesly Keep', 'authors': ['Henry Bardwell']},
-            [title_test('Zombie Wizards', exact=False)]
-        ),
-        (
-            {'identifiers': {'dmsguild': '174433'},
-             'title': 'A History of Waterdeep', 'authors': ['Various']},
-            [title_test('A History of Waterdeep', exact=False)]
+             'title': 'Vampire the Masquerade', 'authors': ['White Wolf']},
+             # Structural test
+            [title_test('Vampire', exact=False)]
         )
     ]
     
-    test_identify_plugin(OneBookShelfSource.name, tests)
+    test_identify_plugin(StorytellersVaultSource.name, tests)
