@@ -37,11 +37,13 @@ All these sites use Cloudflare protection, which blocks automated requests (like
 
 ### How to get the Cookie
 
-1.  Open **Firefox** (Chrome/Edge strings might not work due to TLS fingerprinting).
-2.  Go to the specific site (e.g., `www.pathfinderinfinite.com`) and log in (or just visit).
-3.  Open Developer Tools (**F12**).
-4.  Go to the **Storage** tab.
-5.  Expand **Cookies** and select the site URL.
+1.  Open your browser (Firefox, Chrome, Edge, etc).
+2.  Go to the specific site (e.g., `www.drivethrurpg.com`) and log in (or just visit).
+3.  Open Developer Tools (**F12** or **Right Click -> Inspect**).
+4.  Locate the Cookies:
+    *   **Firefox:** Go to the **Storage** tab -> **Cookies**.
+    *   **Chrome/Edge:** Go to the **Application** tab -> **Storage** -> **Cookies**.
+5.  Select the site URL in the list.
 6.  Find the row named `cf_clearance`.
 7.  Copy the **Value** (a long string of random characters).
 
